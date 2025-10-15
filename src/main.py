@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import IO, Iterator, List, Optional
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import RedirectResponse
 from openai import OpenAI
 from pydantic import BaseModel, Field
 
@@ -21,6 +22,14 @@ TRANSCRIPTS_DIR = BASE_DIR / "transcripts"
 SUPPORTED_EXTENSIONS = (".m4a", ".mp3", ".wav", ".mp4")
 MAX_CONTENT_SIZE = 25 * 1024 * 1024  # OpenAI Whisper limit is 25 MB
 MIN_SEGMENT_DURATION = 15.0  # seconds
+
+# Models supported by the transcriptions endpoint (per OpenAI Audio API)
+AVAILABLE_MODELS = [
+    "whisper-1",
+    "gpt-4o-mini-transcribe",
+    "gpt-4o-transcribe",
+    "gpt-4o-transcribe-diarize",
+]
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -331,6 +340,21 @@ def healthcheck() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@app.get("/")
+def root() -> RedirectResponse:
+    """Redirect root to the interactive docs."""
+
+    return RedirectResponse(url="/docs")
+
+
+@app.get("/models", response_model=FileListResponse)
+def list_models() -> FileListResponse:
+    """List available transcription models."""
+
+    items = AVAILABLE_MODELS.copy()
+    return FileListResponse(items=items)
+
+
 @app.get("/audio", response_model=FileListResponse)
 def list_audio_files() -> FileListResponse:
     """List all supported audio files waiting for transcription."""
@@ -356,6 +380,9 @@ def transcribe_audio(payload: TranscriptionRequest) -> TranscriptionResponse:
     _ensure_directories()
     audio_path = _select_audio_file(payload.filename)
     logger.info("Transcribing %s with model %s", audio_path.name, payload.model)
+
+    if payload.model not in AVAILABLE_MODELS:
+        raise HTTPException(status_code=400, detail=f"Model {payload.model} is not supported. See /models for available models")
 
     transcript_text = _transcribe_audio(audio_path, payload.model)
     transcript_path = _write_transcript(audio_path, transcript_text)
