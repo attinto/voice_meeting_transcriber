@@ -70,3 +70,53 @@ This service lets you pick which OpenAI transcription model to use by setting th
 - Translations: the Audio API also offers a translations endpoint to translate audio into English. This service currently uses the transcriptions endpoint; to translate you can call the Audio API's translations endpoint directly or extend this service to forward translation parameters.
 
 Note: the OpenAI Audio API supports additional parameters (for example `response_format`, `chunking_strategy`, and speaker reference fields). This project currently forwards only `model` and the audio file — if you'd like, I can add support to pass extra transcription parameters through the HTTP payload and into the OpenAI client.
+
+## .env template
+
+This project supports loading environment variables from a `.env` file (used by the example run command in this README). Create a `.env` file in the repository root with your OpenAI API key. Do NOT commit this file to version control — add it to your `.gitignore` instead.
+
+Example `.env`:
+
+```
+OPENAI_API_KEY=sk-your-openai-key-here
+```
+
+Replace `sk-your-openai-key-here` with your real key. If you prefer to export the key directly in your shell instead of using a `.env` file, you can use:
+
+```
+export OPENAI_API_KEY="sk-your-openai-key-here"
+```
+
+## Example curl requests
+
+Below are a few `curl` examples you can use to interact with the running FastAPI server. By default the server listens on `http://127.0.0.1:8000` when started with `uvicorn src.main:app --reload`.
+
+- List available audio files:
+
+```
+curl http://127.0.0.1:8000/audio
+```
+
+- List generated transcripts:
+
+```
+curl http://127.0.0.1:8000/transcripts
+```
+
+- Transcribe the newest audio file (no filename supplied):
+
+```
+curl -X POST http://127.0.0.1:8000/transcribe \
+  -H "Content-Type: application/json" \
+  -d '{"model":"whisper-1"}'
+```
+
+- Transcribe a specific file (replace `my_audio.m4a` with the file name in `src/voicememos`):
+
+```
+curl -X POST http://127.0.0.1:8000/transcribe \
+  -H "Content-Type: application/json" \
+  -d '{"filename":"my_audio.m4a","model":"whisper-1"}'
+```
+
+If your server is protected by a reverse proxy or listening on a different host/port, adjust the URL accordingly.

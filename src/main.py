@@ -1,4 +1,5 @@
 """FastAPI service that transcribes voice memos with the OpenAI API."""
+
 from __future__ import annotations
 
 import contextlib
@@ -9,7 +10,7 @@ import shutil
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import IO, Iterator, List, Optional
+from typing import Iterator, List, Optional
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import RedirectResponse
@@ -81,20 +82,28 @@ def _select_audio_file(target_name: Optional[str]) -> Path:
     """Resolve the desired audio file, defaulting to the newest entry."""
 
     audio_files = sorted(
-        [path for path in VOICEMEMO_DIR.iterdir() if path.suffix.lower() in SUPPORTED_EXTENSIONS],
+        [
+            path
+            for path in VOICEMEMO_DIR.iterdir()
+            if path.suffix.lower() in SUPPORTED_EXTENSIONS
+        ],
         key=lambda path: path.stat().st_mtime,
         reverse=True,
     )
 
     if not audio_files:
-        raise HTTPException(status_code=404, detail="No audio files found in voicememos")
+        raise HTTPException(
+            status_code=404, detail="No audio files found in voicememos"
+        )
 
     if target_name is None:
         return audio_files[0]
 
     candidate = VOICEMEMO_DIR / target_name
     if not candidate.exists():
-        raise HTTPException(status_code=404, detail=f"Audio file {target_name} does not exist")
+        raise HTTPException(
+            status_code=404, detail=f"Audio file {target_name} does not exist"
+        )
     if candidate.suffix.lower() not in SUPPORTED_EXTENSIONS:
         raise HTTPException(status_code=400, detail="Unsupported audio file extension")
 
@@ -108,7 +117,9 @@ def _transcribe_audio(audio_path: Path, model: str) -> str:
         api_key = os.environ["OPENAI_API_KEY"]
     except KeyError as err:  # pragma: no cover - executed only when key is missing
         logger.error("OPENAI_API_KEY is not set")
-        raise HTTPException(status_code=500, detail="OPENAI_API_KEY environment variable is required") from err
+        raise HTTPException(
+            status_code=500, detail="OPENAI_API_KEY environment variable is required"
+        ) from err
 
     client = OpenAI(api_key=api_key)
 
@@ -133,14 +144,14 @@ def _transcribe_audio(audio_path: Path, model: str) -> str:
                         # Handle short-audio errors from OpenAI gracefully by returning
                         # an empty transcript and logging a warning instead of
                         # propagating an error to the client.
-                        err_msg = getattr(exc, 'args', [None])[0]
+                        err_msg = getattr(exc, "args", [None])[0]
                         # openai.BadRequestError from the library carries a .response
                         # with JSON detail; we check for the known 'audio_too_short' code
                         code = None
                         try:
                             # Some exception types include a 'response' attribute
                             # with a .json() method or a .text payload.
-                            resp = getattr(exc, 'response', None)
+                            resp = getattr(exc, "response", None)
                             if resp is not None:
                                 # resp may be an httpx.Response or similar
                                 try:
@@ -148,12 +159,19 @@ def _transcribe_audio(audio_path: Path, model: str) -> str:
                                 except Exception:
                                     j = None
                                 if isinstance(j, dict):
-                                    code = j.get('error', {}).get('code')
+                                    code = j.get("error", {}).get("code")
                         except Exception:
                             code = None
 
-                        if code == 'audio_too_short' or (isinstance(err_msg, dict) and err_msg.get('error', {}).get('code') == 'audio_too_short'):
-                            logger.warning("Audio chunk %s was too short for transcription; skipping and returning empty transcript", prepared_path.name)
+                        if code == "audio_too_short" or (
+                            isinstance(err_msg, dict)
+                            and err_msg.get("error", {}).get("code")
+                            == "audio_too_short"
+                        ):
+                            logger.warning(
+                                "Audio chunk %s was too short for transcription; skipping and returning empty transcript",
+                                prepared_path.name,
+                            )
                             # Append empty string for this chunk and continue; ultimately
                             # we'll join transcripts which will ignore empty entries.
                             transcripts.append("")
@@ -167,12 +185,16 @@ def _transcribe_audio(audio_path: Path, model: str) -> str:
                     # If the API returned an empty text (but no exception), treat
                     # it as a warning and append an empty string rather than
                     # failing the whole request.
-                    logger.warning("OpenAI returned empty transcription for %s", prepared_path.name)
+                    logger.warning(
+                        "OpenAI returned empty transcription for %s", prepared_path.name
+                    )
                     transcripts.append("")
                 else:
                     transcripts.append(text)
     except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=f"Audio file not found: {audio_path.name}") from exc
+        raise HTTPException(
+            status_code=404, detail=f"Audio file not found: {audio_path.name}"
+        ) from exc
     except HTTPException:
         raise
     except Exception as exc:  # pragma: no cover - surface API issues to the client
@@ -188,6 +210,8 @@ def _write_transcript(audio_path: Path, transcript_text: str) -> Path:
     transcript_path = TRANSCRIPTS_DIR / f"{audio_path.stem}.txt"
     transcript_path.write_text(transcript_text, encoding="utf-8")
     return transcript_path
+
+
 @contextlib.contextmanager
 def _audio_processing_context(audio_path: Path) -> Iterator[List[Path]]:
     """Prepare an audio file for upload, compressing and chunking when needed."""
@@ -225,7 +249,9 @@ def _transcode_audio(audio_path: Path) -> Path:
     try:
         temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
     except OSError as exc:  # pragma: no cover - temp failures are rare
-        raise HTTPException(status_code=500, detail="Unable to allocate temp file for conversion") from exc
+        raise HTTPException(
+            status_code=500, detail="Unable to allocate temp file for conversion"
+        ) from exc
 
     temp_path = Path(temp_file.name)
     temp_file.close()
@@ -246,11 +272,17 @@ def _transcode_audio(audio_path: Path) -> Path:
     ]
 
     try:
-        subprocess.run(command, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(
+            command, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        )
     except FileNotFoundError as exc:
-        raise HTTPException(status_code=500, detail="ffmpeg is required to compress large audio files") from exc
+        raise HTTPException(
+            status_code=500, detail="ffmpeg is required to compress large audio files"
+        ) from exc
     except subprocess.CalledProcessError as exc:
-        raise HTTPException(status_code=500, detail="ffmpeg failed to compress the audio") from exc
+        raise HTTPException(
+            status_code=500, detail="ffmpeg failed to compress the audio"
+        ) from exc
 
     return temp_path
 
@@ -260,7 +292,9 @@ def _chunk_audio(audio_path: Path) -> tuple[List[Path], Path]:
 
     duration = _probe_duration(audio_path)
     if duration <= 0:
-        raise HTTPException(status_code=500, detail="Unable to determine audio duration for chunking")
+        raise HTTPException(
+            status_code=500, detail="Unable to determine audio duration for chunking"
+        )
 
     total_size = audio_path.stat().st_size
     chunk_count = max(2, math.ceil(total_size / MAX_CONTENT_SIZE))
@@ -284,19 +318,29 @@ def _chunk_audio(audio_path: Path) -> tuple[List[Path], Path]:
     ]
 
     try:
-        subprocess.run(command, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(
+            command, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        )
     except FileNotFoundError as exc:
-        raise HTTPException(status_code=500, detail="ffmpeg is required to split large audio files") from exc
+        raise HTTPException(
+            status_code=500, detail="ffmpeg is required to split large audio files"
+        ) from exc
     except subprocess.CalledProcessError as exc:
-        raise HTTPException(status_code=500, detail="ffmpeg failed to split the audio") from exc
+        raise HTTPException(
+            status_code=500, detail="ffmpeg failed to split the audio"
+        ) from exc
 
     chunks = sorted(temp_dir.glob("chunk_*.mp3"))
     if not chunks:
-        raise HTTPException(status_code=500, detail="ffmpeg did not produce any audio chunks")
+        raise HTTPException(
+            status_code=500, detail="ffmpeg did not produce any audio chunks"
+        )
 
     too_large = [chunk for chunk in chunks if chunk.stat().st_size > MAX_CONTENT_SIZE]
     if too_large:
-        raise HTTPException(status_code=400, detail="Audio chunks remain too large after splitting")
+        raise HTTPException(
+            status_code=400, detail="Audio chunks remain too large after splitting"
+        )
 
     return chunks, temp_dir
 
@@ -323,14 +367,20 @@ def _probe_duration(audio_path: Path) -> float:
             text=True,
         )
     except FileNotFoundError as exc:
-        raise HTTPException(status_code=500, detail="ffprobe is required to split large audio files") from exc
+        raise HTTPException(
+            status_code=500, detail="ffprobe is required to split large audio files"
+        ) from exc
     except subprocess.CalledProcessError as exc:
-        raise HTTPException(status_code=500, detail="ffprobe failed to inspect the audio file") from exc
+        raise HTTPException(
+            status_code=500, detail="ffprobe failed to inspect the audio file"
+        ) from exc
 
     try:
         return float(completed.stdout.strip())
     except ValueError as exc:  # pragma: no cover - depends on ffprobe output
-        raise HTTPException(status_code=500, detail="Unable to parse audio duration") from exc
+        raise HTTPException(
+            status_code=500, detail="Unable to parse audio duration"
+        ) from exc
 
 
 @app.get("/health")
@@ -360,7 +410,11 @@ def list_audio_files() -> FileListResponse:
     """List all supported audio files waiting for transcription."""
 
     _ensure_directories()
-    items = sorted(path.name for path in VOICEMEMO_DIR.iterdir() if path.suffix.lower() in SUPPORTED_EXTENSIONS)
+    items = sorted(
+        path.name
+        for path in VOICEMEMO_DIR.iterdir()
+        if path.suffix.lower() in SUPPORTED_EXTENSIONS
+    )
     return FileListResponse(items=items)
 
 
@@ -382,12 +436,17 @@ def transcribe_audio(payload: TranscriptionRequest) -> TranscriptionResponse:
     logger.info("Transcribing %s with model %s", audio_path.name, payload.model)
 
     if payload.model not in AVAILABLE_MODELS:
-        raise HTTPException(status_code=400, detail=f"Model {payload.model} is not supported. See /models for available models")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Model {payload.model} is not supported. See /models for available models",
+        )
 
     transcript_text = _transcribe_audio(audio_path, payload.model)
     transcript_path = _write_transcript(audio_path, transcript_text)
 
-    preview = transcript_text[:120].replace("\n", " ") + ("…" if len(transcript_text) > 120 else "")
+    preview = transcript_text[:120].replace("\n", " ") + (
+        "…" if len(transcript_text) > 120 else ""
+    )
 
     return TranscriptionResponse(
         audio_filename=audio_path.name,
