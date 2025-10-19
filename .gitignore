@@ -212,3 +212,8 @@ __marimo__/
 
 *.m4a
 *.txt
+
+
+!src/voicememos/sample_voice.m4a
+
+!src/transcripts/sample_voice.txt
